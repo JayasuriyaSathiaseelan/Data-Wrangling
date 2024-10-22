@@ -1,0 +1,424 @@
+#Task 1.1
+<!-- In this analysis, our goal is to gain valuable insights from Airbnb's property listings dataset in Brisbane. To begin, we load the necessary libraries and import the dataset into R, ensuring a solid foundation for further exploration and visualization. -->
+
+<!-- To prepare the data for analysis, we select and clean the relevant columns. This includes converting columns to appropriate data types, such as transforming price from a string with currency symbols to a numeric format. These preparatory steps are crucial for accurate and efficient data analysis, ensuring that the data is in the correct format. -->
+
+#Task 1.2
+if (!require("dplyr")) install.packages("dplyr", dependencies = TRUE)
+if (!require("readr")) install.packages("readr", dependencies = TRUE)
+if (!require("ggplot2")) install.packages("ggplot2", dependencies = TRUE)
+if (!require("reshape2")) install.packages("reshape2", dependencies = TRUE)
+if (!require("jsonlite")) install.packages("jsonlite", dependencies = TRUE)
+if (!require("readxl")) install.packages("readxl", dependencies = TRUE)
+if (!require("tidyr")) install.packages("tidyr", dependencies = TRUE)
+# Load necessary libraries
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(reshape2)
+library(jsonlite)
+library(dplyr)
+library(readxl)
+library(tidyr)
+# Install and load the here package
+if (!require("here")) install.packages("here", dependencies = TRUE)
+library(here)
+# Set the working directory to the location of the R Markdown file
+setwd("/Users/jayasuriyasathiaseelan/Documents/Data wrangling assignment 2 database")
+# Read the dataset
+listings <- read_csv("listings.csv")
+# Select relevant columns and convert numeric columns to appropriate types
+selected_columns <- listings %>%
+  select(id, name, description, host_name, neighbourhood_cleansed, property_type, room_type,
+         accommodates, bathrooms_text, bedrooms, beds, amenities, price, number_of_reviews,
+         number_of_reviews_ltm, review_scores_rating, review_scores_accuracy, review_scores_cleanliness,
+         review_scores_checkin, review_scores_communication, review_scores_location, review_scores_value, host_is_superhost)
+# Convert relevant columns to numeric
+selected_columns <- selected_columns %>%
+  mutate(across(c(accommodates, bedrooms, beds, number_of_reviews, number_of_reviews_ltm,
+                  review_scores_rating, review_scores_accuracy, review_scores_cleanliness,
+                  review_scores_checkin, review_scores_communication, review_scores_location,
+                  review_scores_value), as.numeric)) %>%
+  mutate(price = as.numeric(gsub("[$,]", "", price)))  # Remove $ and , from price and convert to numeric
+# Display summary of the dataframe
+summary(selected_columns)
+
+#Task 1.3
+# Count listings with 'Airport' in their name (case insensitive)
+airport_listings <- selected_columns %>%
+  filter(grepl("airport", name, ignore.case = TRUE))
+num_airport_listings <- nrow(airport_listings)
+num_airport_listings
+# Count listings with 'Airport' and 'CBD' in their name (case insensitive)
+airport_cbd_listings <- selected_columns %>%
+  filter(grepl("airport", name, ignore.case = TRUE) & grepl("cbd", name, ignore.case = TRUE))
+num_airport_cbd_listings <- nrow(airport_cbd_listings)
+num_airport_cbd_listings
+
+#Task 1.4
+# Find top-ten neighbourhoods with the highest number of reviews
+top_neighbourhoods <- selected_columns %>%
+  group_by(neighbourhood_cleansed) %>%
+  summarize(total_reviews = sum(number_of_reviews, na.rm = TRUE),
+            average_rating = mean(review_scores_rating, na.rm = TRUE)) %>%
+  arrange(desc(total_reviews)) %>%
+  head(10)
+top_neighbourhoods
+
+#Task 1.5
+# Compare average review ratings and review counts between superhosts and non-superhosts
+superhost_comparison <- selected_columns %>%
+  group_by(host_is_superhost) %>%
+  summarize(
+    average_rating = mean(review_scores_rating, na.rm = TRUE),
+    review_count = mean(number_of_reviews, na.rm = TRUE)
+  )
+superhost_comparison
+
+#Task 1.6
+# Filter for Wynnum and calculate average price and average review score rating for each property type
+wynnum_stats <- selected_columns %>%
+  filter(neighbourhood_cleansed == "Wynnum") %>%
+  group_by(property_type) %>%
+  summarize(
+    average_price = mean(price, na.rm = TRUE),
+    average_review_rating = mean(review_scores_rating, na.rm = TRUE)
+  )
+wynnum_stats
+
+#Task 1.7
+# Define the criteria
+neighbourhood_criteria <- "Brisbane City"
+max_price <- 300
+property_type_criteria <- "Entire rental unit"
+required_amenities <- c("Wifi", "Dryer", "TV")
+min_accommodates <- 3
+# Function to check if all required amenities are present in a listing's amenities
+has_required_amenities <- function(amenities_json, required_amenities) {
+  amenities_list <- fromJSON(amenities_json)
+  all(required_amenities %in% amenities_list)
+}
+# Filter listings based on the criteria
+filtered_listings <- selected_columns %>%
+  filter(neighbourhood_cleansed == neighbourhood_criteria,
+         price <= max_price,
+         property_type == property_type_criteria,
+         accommodates >= min_accommodates) %>%
+  filter(sapply(amenities, has_required_amenities, required_amenities))
+# Ensure the result has at least 5 and at most 20 listings
+filtered_listings <- head(filtered_listings, max(nrow(filtered_listings), 5))
+filtered_listings <- head(filtered_listings, 20)
+# Display relevant columns
+filtered_listings <- filtered_listings %>%
+  select(name, neighbourhood_cleansed, price, property_type, amenities, accommodates)
+# Display the filtered listings
+filtered_listings
+
+#Task 1.8
+# Count the number of listings per property type
+property_type_counts <- selected_columns %>%
+  group_by(property_type) %>%
+  summarize(count = n()) %>%
+  arrange(desc(count)) %>%
+  slice_head(n = 10)
+# Create the bar chart
+ggplot(property_type_counts, aes(x = reorder(property_type, count), y = count)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 10 Property Types by Number of Listings",
+       x = "Property Type",
+       y = "Number of Listings") +
+  theme_minimal()
+<!-- The bar chart provides valuable insights into the popularity of different rental options. "Entire rental unit" stands out as the most sought-after type, showcasing a strong demand for independent living spaces. Following in popularity are "Entire home" and "Private room in home," indicating a mix of preferences for private and shared accommodations. The diversity of property types, such as "Entire guest suite" and "Entire serviced apartment," reflects the diverse offerings in the market, catering to different renter preferences. These insights can assist property managers and investors in understanding market demands and adapting their strategies accordingly. -->
+  
+#Task 1.9
+review_scores <- selected_columns %>%
+  select(review_scores_rating, review_scores_accuracy, review_scores_cleanliness,
+         review_scores_checkin, review_scores_communication, review_scores_location,
+         review_scores_value)
+# Melt the data for easier plotting
+melted_review_scores <- melt(review_scores, variable.name = "category", value.name = "score")
+# Create boxplots for each review category
+ggplot(melted_review_scores, aes(x = category, y = score, fill = category)) +
+  geom_boxplot() +
+  labs(title = "Distribution of Review Scores by Category",
+       x = "Review Category",
+       y = "Score") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# Select relevant columns and convert numeric columns to appropriate types
+selected_columns <- listings %>%
+  select(review_scores_rating, review_scores_accuracy, review_scores_cleanliness,
+         review_scores_checkin, review_scores_communication, review_scores_location,
+         review_scores_value) %>%
+  mutate(across(everything(), as.numeric))
+<!-- When examining all categories (Overall Experience, Accuracy, Cleanliness, etc.), the box plots generally indicate positive guest experiences. Most ratings reside in the upper halves of the boxes, supported by the medians presumably placed near the top of each box. Despite this, the box spreads (IQRs) reveal varying guest experiences across categories. Wider IQRs imply a broader spectrum of ratings, ranging from highly positive to possibly negative, within those categories. -->
+<!-- Considering overall experience, accuracy, and communication, smaller interquartile ranges (IQRs) suggest a consistent experience for guests. In contrast, broader IQRs in categories like cleanliness and location indicate a more varied range of experiences. It would be beneficial to investigate outliers (data points beyond the whiskers) on the lower end for these categories. These outliers may indicate occasional negative experiences that need to be addressed. -->
+<!-- The guest experiences with the listings appear generally positive. However, areas like Cleanliness and Location demonstrate a wider range of guest ratings, indicating potential room for improvement. Exploring the outliers in these categories could help identify recurring issues. Moreover, although the medians in all categories reflect positive experiences, a more thorough analysis considering the entire range of scores (from lowest to highest) in conjunction with the box plots would provide additional insights. -->
+
+  
+  
+#Task 2.1
+# Read the dataset
+census_data <- read_excel("census.xlsx", sheet = "2016", col_names = FALSE)
+# Use the first row as column names
+colnames(census_data) <- census_data[1, ]
+# Remove the first row
+census_data <- census_data[-1, ]
+# Ensure column names are in the correct format
+colnames(census_data) <- c("Stat", "Count_Percentage")
+# Remove the second row (originally the first data row) as well if it's not needed
+census_data <- census_data[-1, ]
+census_data
+
+#Task 2.2
+# Assuming the first column is the one we need to clean, let's check its unique values
+unique(census_data$Stat)
+# Inspect the column names to ensure we reference the correct column
+colnames(census_data)
+# Assuming the first column is the one we need to clean, let's check its unique values
+unique(census_data[[1]])
+# Trim whitespace and fix any inconsistencies manually (assuming the first column is named 'Stat')
+census_data[[1]] <- trimws(census_data[[1]])
+# Verify the changes
+unique(census_data[[1]])
+
+#Task 2.3
+census_data_mod <- census_data %>%
+  separate(Count_Percentage, into = c("Count", "Percentage"), sep = "[/|]", fill = "right", remove = FALSE) %>%
+  mutate(
+    Count = ifelse(is.na(Count), Count_Percentage, Count),
+    Percentage = ifelse(is.na(Percentage), 0, as.numeric(Percentage))
+  ) %>%
+  select(-Count_Percentage)  # Remove the original Count_Percentage column if not needed
+# Change column names to c("Stat", "Count", "Percentage")
+colnames(census_data_mod) <- c("Stat", "Count", "Percentage")
+# Display the modified data
+print(census_data_mod)
+
+
+#Task 2.4
+# Remove the percentage column as we are only interested in the count value
+census_data_mod <- census_data_mod %>% select(-Percentage)
+print(census_data_mod)
+# Split the data into groups of 9 rows
+data_groups <- split(census_data_mod, rep(1:(nrow(census_data_mod) %/% 9), each = 9))
+print(data_groups)
+# Initialize an empty list to store transformed dataframes
+transformed_dfs <- list()
+# Iterate through each group
+for (group in data_groups) {
+  # Create a new dataframe with 9 rows and 9 columns
+  transformed_df <- as.data.frame(matrix(NA, nrow = 1, ncol = 9))
+  colnames(transformed_df) <- c("Region", "None (includes bedsitters)", 
+                                 "1 bedroom", "2 bedrooms", "3 bedrooms", 
+                                 "4 or more bedrooms", "Number of bedrooms not stated", 
+                                 "Average number of bedrooms per dwelling", 
+                                 "Average number of people per household")
+  
+  # Iterate through each row in the group
+  for (i in 1:9) {
+    # Get the current row
+    row <- group[i, ]
+    
+    #Extract Stat and Count values
+    
+    stat <- as.character(row$Stat)
+    if (stat!="3 or bedrooms"){
+    count <- as.character(row$Count)
+    
+    # Assign Count to the corresponding column in transformed_df
+    transformed_df[[stat]] <- count}
+  }
+  
+  # Append the transformed dataframe to the list
+  transformed_dfs[[length(transformed_dfs) + 1]] <- transformed_df
+}
+# Combine all transformed dataframes into a single dataframe
+final_df <- do.call(rbind, transformed_dfs)
+# Print the final dataframe
+print(final_df)
+
+
+#TASK 2.5
+# Add a column for the year
+final_df$Year <- 2016
+# Rename columns
+names(final_df) <- c("Region", "br_count_0", "br_count_1", "br_count_2", 
+                     "br_count_3", "br_count_4_or_more", "br_count_unstated", 
+                     "av_per_dwelling", "av_per_household", "Year")
+# Reorder columns
+final_df <- final_df[, c("Region", "Year", "br_count_0", "br_count_1", "br_count_2", 
+                         "br_count_3", "br_count_4_or_more", "br_count_unstated", 
+                         "av_per_dwelling", "av_per_household")]
+# Convert columns to appropriate types
+final_df$Region <- as.character(final_df$Region)
+final_df$Year <- as.integer(final_df$Year)
+final_df$br_count_0 <- as.numeric(final_df$br_count_0)
+final_df$br_count_1 <- as.numeric(final_df$br_count_1)
+final_df$br_count_2 <- as.numeric(final_df$br_count_2)
+final_df$br_count_3 <- as.numeric(final_df$br_count_3)
+final_df$br_count_4_or_more <- as.numeric(final_df$br_count_4_or_more)
+final_df$br_count_unstated <- as.numeric(final_df$br_count_unstated)
+final_df$av_per_dwelling <- as.numeric(final_df$av_per_dwelling)
+final_df$av_per_household <- as.numeric(final_df$av_per_household)
+# Show summary of the dataframe
+summary(final_df)
+
+
+#Task 2.6
+# Find duplicated regions
+duplicated_regions <- final_df[duplicated(final_df$Region), "Region"]
+# Show duplicated regions
+print(duplicated_regions)
+# Remove duplicated regions from the dataframe
+final_df <- final_df[!duplicated(final_df$Region), ]
+print(final_df)
+
+#Task 2.7
+clean_dataframe <- function(file_path, year) {
+#Task 2.1
+# Read the dataset
+census_data <- read_excel(file_path, sheet = as.character(year), col_names = FALSE)
+# Use the first row as column names
+# Use the first row as column names
+colnames(census_data) <- census_data[1, ]
+# Remove the first row
+census_data <- census_data[-1, ]
+# Ensure column names are in the correct format
+colnames(census_data) <- c("Stat", "Count_Percentage")
+# Remove the second row (originally the first data row) as well if it's not needed
+census_data <- census_data[-1, ]
+
+#Task 2.2
+# Assuming the first column is the one we need to clean, let's check its unique values
+unique(census_data$Stat)
+# Inspect the column names to ensure we reference the correct column
+colnames(census_data)
+# Assuming the first column is the one we need to clean, let's check its unique values
+unique(census_data[[1]])
+# Trim whitespace and fix any inconsistencies manually (assuming the first column is named 'Stat')
+census_data[[1]] <- trimws(census_data[[1]])
+# Verify the changes
+unique(census_data[[1]])
+
+#Task 2.3
+census_data_mod <- census_data %>%
+  separate(Count_Percentage, into = c("Count", "Percentage"), sep = "[/|]", fill = "right", remove = FALSE) %>%
+  mutate(
+    Count = ifelse(is.na(Count), Count_Percentage, Count),
+    Percentage = ifelse(is.na(Percentage), 0, as.numeric(Percentage))
+  ) %>%
+  select(-Count_Percentage)  # Remove the original Count_Percentage column if not needed
+# Change column names to c("Stat", "Count", "Percentage")
+colnames(census_data_mod) <- c("Stat", "Count", "Percentage")
+
+
+#Task 2.4
+# Remove the percentage column as we are only interested in the count value
+census_data_mod <- census_data_mod %>% select(-Percentage)
+# Split the data into groups of 9 rows
+data_groups <- split(census_data_mod, rep(1:(nrow(census_data_mod) %/% 9), each = 9))
+# Initialize an empty list to store transformed dataframes
+transformed_dfs <- list()
+# Iterate through each group
+for (group in data_groups) {
+  # Create a new dataframe with 9 rows and 9 columns
+  transformed_df <- as.data.frame(matrix(NA, nrow = 1, ncol = 9))
+  colnames(transformed_df) <- c("Region", "None (includes bedsitters)", 
+                                 "1 bedroom", "2 bedrooms", "3 bedrooms", 
+                                 "4 or more bedrooms", "Number of bedrooms not stated", 
+                                 "Average number of bedrooms per dwelling", 
+                                 "Average number of people per household")
+  # Iterate through each row in the group
+  for (i in 1:9) {
+    # Get the current row
+    row <- group[i, ]
+    
+    #Extract Stat and Count values
+    
+    stat <- as.character(row$Stat)
+    if (stat!="3 or bedrooms"){
+    count <- as.character(row$Count)
+    
+    # Assign Count to the corresponding column in transformed_df
+    transformed_df[[stat]] <- count}
+  }
+  
+  # Append the transformed dataframe to the list
+  transformed_dfs[[length(transformed_dfs) + 1]] <- transformed_df
+}
+# Combine all transformed dataframes into a single dataframe
+final_df <- do.call(rbind, transformed_dfs)
+
+
+
+#TASK 2.5
+# Add a column for the year
+final_df$Year <- year  # Replace 2024 with the appropriate year
+print(final_df)
+# Rename columns
+names(final_df) <- c("Region", "br_count_0", "br_count_1", "br_count_2", 
+                     "br_count_3", "br_count_4_or_more", "br_count_unstated", 
+                     "av_per_dwelling", "av_per_household", "Year")
+# Reorder columns
+final_df <- final_df[, c("Region", "Year", "br_count_0", "br_count_1", "br_count_2", 
+                         "br_count_3", "br_count_4_or_more", "br_count_unstated", 
+                         "av_per_dwelling", "av_per_household")]
+# Convert columns to appropriate types
+final_df$Region <- as.character(final_df$Region)
+final_df$Year <- as.integer(final_df$Year)
+final_df$br_count_0 <- as.numeric(final_df$br_count_0)
+final_df$br_count_1 <- as.numeric(final_df$br_count_1)
+final_df$br_count_2 <- as.numeric(final_df$br_count_2)
+final_df$br_count_3 <- as.numeric(final_df$br_count_3)
+final_df$br_count_4_or_more <- as.numeric(final_df$br_count_4_or_more)
+final_df$br_count_unstated <- as.numeric(final_df$br_count_unstated)
+final_df$av_per_dwelling <- as.numeric(final_df$av_per_dwelling)
+final_df$av_per_household <- as.numeric(final_df$av_per_household)
+
+# Show summary of the dataframe
+summary(final_df)
+
+# Task 2.6
+# Find duplicated regions
+duplicated_regions <- final_df[duplicated(final_df$Region), "Region"]
+# Show duplicated regions
+print(duplicated_regions)
+# Remove duplicated regions from the dataframe
+final_df <- final_df[!duplicated(final_df$Region), ]
+print(final_df)
+  return(final_df)
+}
+
+
+#Task 2.8
+# Call the function for 2011 and 2016
+df_2011 <- clean_dataframe("census.xlsx",2011)
+df_2016 <- clean_dataframe("census.xlsx",2016)
+# Combine the dataframes
+combined_df <- rbind(df_2011, df_2016)
+print(combined_df)
+
+#Task 2.9
+# Investigate the combined dataframe
+summary(combined_df)
+combined_df <- combined_df %>%
+  mutate(br_count_1 = abs(br_count_1),
+         br_count_4_or_more = abs(br_count_4_or_more))
+# Show the modified dataframe
+print(combined_df)
+summary(combined_df)
+
+#Task 2.10
+# Calculate the decrease in the number of 2 bedroom houses for each region
+combined_df$decrease_2_bedrooms <- combined_df$br_count_2[combined_df$Year == 2011] - 
+                                   combined_df$br_count_2[combined_df$Year == 2016]
+# Find the region with the largest decrease
+largest_decrease_region <- combined_df$Region[which.max(combined_df$decrease_2_bedrooms)]
+# Print the region with the largest decrease
+print(largest_decrease_region)
+
+
+
+
